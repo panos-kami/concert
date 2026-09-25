@@ -77,7 +77,7 @@ input[type=range]{width:100%;accent-color:var(--wine)}
 .tiny{font-size:11px;letter-spacing:.17em;text-transform:uppercase;color:#a26f7c;font-weight:700}
 .hold-wrap{width:190px;height:190px;margin:25px auto 12px;position:relative}
 .ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(#a54760 var(--p,0%),rgba(165,71,96,.13) 0);mask:radial-gradient(circle,transparent 62%,#000 64%);-webkit-mask:radial-gradient(circle,transparent 62%,#000 64%)}
-.hold{position:absolute;inset:19px;border:0;border-radius:50%;background:linear-gradient(145deg,#a74c63,#78384a);color:#fff;font-weight:800;font-size:18px;box-shadow:0 18px 35px rgba(109,48,66,.25);touch-action:none;user-select:none;-webkit-user-select:none}
+.hold{position:absolute;inset:19px;border:0;border-radius:50%;background:linear-gradient(145deg,#a74c63,#78384a);color:#fff;font-weight:800;font-size:18px;box-shadow:0 18px 35px rgba(109,48,66,.25);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .hold small{display:block;font-size:11px;font-weight:500;opacity:.78;margin-top:4px}
 .support-note{color:#8b6170;font-size:13px}
 .heart{position:fixed;z-index:50;font-size:22px;pointer-events:none;animation:fly 1.2s ease-out forwards}
@@ -185,12 +185,97 @@ document.getElementById('studyBtn').addEventListener('click',()=>{const e=docume
 let taps=0;document.getElementById('heartTap').onclick=e=>{taps++;const r=e.currentTarget.getBoundingClientRect();heartBurst(r.left+r.width/2,r.top+r.height/2,taps%5===0);document.getElementById('procrastinationNote').textContent=taps<5?`${taps} completely valid distraction${taps===1?'':'s'}.`:'Okay. That is enough emotional support. Back to the book. 😭';};
 
 const holdBtn=document.getElementById('holdBtn'),ring=document.getElementById('ring'),note=document.getElementById('supportNote'),final=document.getElementById('final');
-let holdStart=0,raf=0,holding=false,lastBurst=0;const duration=2800;
-function heartBurst(x,y,big=false){const count=big?46:4;for(let i=0;i<count;i++){const h=document.createElement('div');h.className='heart';h.textContent=Math.random()>.18?'♥':'♡';h.style.left=(x+(Math.random()-.5)*(big?240:55))+'px';h.style.top=(y+(Math.random()-.5)*35)+'px';h.style.color=['#d86f7d','#b94f62','#f1a1ad','#7b2f40','#d4a17a'][Math.floor(Math.random()*5)];h.style.setProperty('--x',((Math.random()-.5)*(big?230:90))+'px');h.style.setProperty('--r',((Math.random()-.5)*130)+'deg');document.body.appendChild(h);setTimeout(()=>h.remove(),1250);}}
-function step(ts){if(!holding)return;const p=Math.min(1,(ts-holdStart)/duration),pct=Math.round(p*100);ring.style.setProperty('--p',pct+'%');note.textContent=pct+'% delivered';if(ts-lastBurst>170){const r=holdBtn.getBoundingClientRect();heartBurst(r.left+r.width/2,r.top+r.height/2);lastBurst=ts;}if(p>=1){holding=false;cancelAnimationFrame(raf);const r=holdBtn.getBoundingClientRect();heartBurst(r.left+r.width/2,r.top+r.height/2,true);note.textContent='100% delivered ♥';final.classList.add('show');setTimeout(()=>final.scrollIntoView({behavior:'smooth',block:'center'}),250);return}raf=requestAnimationFrame(step);}
-function startHold(e){e.preventDefault();if(final.classList.contains('show'))return;holding=true;holdStart=performance.now();lastBurst=0;raf=requestAnimationFrame(step)}
-function stopHold(){if(!holding)return;holding=false;cancelAnimationFrame(raf);ring.style.setProperty('--p','0%');note.textContent='Hold a little longer…'}
-holdBtn.addEventListener('pointerdown',startHold);['pointerup','pointercancel','pointerleave'].forEach(ev=>holdBtn.addEventListener(ev,stopHold));
+let holdStart=0,holdTimer=null,holding=false,lastBurst=0,activePointer=null;
+const duration=2800;
+
+function heartBurst(x,y,big=false){
+  const count=big?46:4;
+  for(let i=0;i<count;i++){
+    const h=document.createElement('div');
+    h.className='heart';
+    h.textContent=Math.random()>.18?'♥':'♡';
+    h.style.left=(x+(Math.random()-.5)*(big?240:55))+'px';
+    h.style.top=(y+(Math.random()-.5)*35)+'px';
+    h.style.color=['#d86f7d','#b94f62','#f1a1ad','#7b2f40','#d4a17a'][Math.floor(Math.random()*5)];
+    h.style.setProperty('--x',((Math.random()-.5)*(big?230:90))+'px');
+    h.style.setProperty('--r',((Math.random()-.5)*130)+'deg');
+    document.body.appendChild(h);
+    setTimeout(()=>h.remove(),1250);
+  }
+}
+
+function updateHold(){
+  if(!holding)return;
+  const now=performance.now();
+  const p=Math.min(1,(now-holdStart)/duration);
+  const pct=Math.round(p*100);
+  ring.style.setProperty('--p',pct+'%');
+  note.textContent=pct+'% delivered';
+
+  if(now-lastBurst>180){
+    const r=holdBtn.getBoundingClientRect();
+    heartBurst(r.left+r.width/2,r.top+r.height/2);
+    lastBurst=now;
+  }
+
+  if(p>=1) completeHold();
+}
+
+function completeHold(){
+  if(!holding && final.classList.contains('show')) return;
+  holding=false;
+  if(holdTimer){clearInterval(holdTimer);holdTimer=null;}
+  const r=holdBtn.getBoundingClientRect();
+  heartBurst(r.left+r.width/2,r.top+r.height/2,true);
+  ring.style.setProperty('--p','100%');
+  note.textContent='100% delivered ♥';
+  holdBtn.disabled=true;
+  final.classList.add('show');
+  setTimeout(()=>final.scrollIntoView({behavior:'smooth',block:'center'}),250);
+}
+
+function beginHold(e){
+  if(final.classList.contains('show') || holding)return;
+  if(e && e.cancelable)e.preventDefault();
+  holding=true;
+  holdStart=performance.now();
+  lastBurst=0;
+  note.textContent='Keep holding…';
+  holdBtn.classList.add('pressed');
+
+  if(e && e.pointerId!=null){
+    activePointer=e.pointerId;
+    try{holdBtn.setPointerCapture(e.pointerId)}catch(_){}
+  }
+
+  updateHold();
+  holdTimer=setInterval(updateHold,30);
+}
+
+function cancelHold(e){
+  if(!holding)return;
+  if(e && e.pointerId!=null && activePointer!=null && e.pointerId!==activePointer)return;
+  holding=false;
+  activePointer=null;
+  if(holdTimer){clearInterval(holdTimer);holdTimer=null;}
+  holdBtn.classList.remove('pressed');
+  ring.style.setProperty('--p','0%');
+  note.textContent='Hold a little longer…';
+}
+
+if(window.PointerEvent){
+  holdBtn.addEventListener('pointerdown',beginHold);
+  window.addEventListener('pointerup',cancelHold);
+  window.addEventListener('pointercancel',cancelHold);
+} else {
+  holdBtn.addEventListener('touchstart',beginHold,{passive:false});
+  window.addEventListener('touchend',cancelHold,{passive:false});
+  window.addEventListener('touchcancel',cancelHold,{passive:false});
+  holdBtn.addEventListener('mousedown',beginHold);
+  window.addEventListener('mouseup',cancelHold);
+}
+
+holdBtn.addEventListener('contextmenu',e=>e.preventDefault());
 </script>
 </body>
 </html>
